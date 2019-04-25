@@ -14,13 +14,15 @@ import (
 	"os"
 )
 
-func main() {
+func main(){
 	port := flag.Uint("port", 8000, "the port on which the server listens")
 	tilesetRoot := flag.String("dir", ".", "the root directory under which tileset directories reside")
 	webRoot := flag.String("web-dir", "", "(optional) the root directory containing static files to be served")
 	memcached := flag.String("memcached", "", "(optional) memcached connection string for caching tiles e.g. localhost:11211")
 	baseTerrainUrl := flag.String("base-terrain-url", "/tilesets", "base url prefix under which all tilesets are served")
 	noRequestLog := flag.Bool("no-request-log", false, "do not log client requests for resources")
+	https := flag.Bool("https", false, "if https is enabled")
+	pemPath := flag.String("pemPath", "", "Path to pem files cert.pem and key.pem")
 	logging := NewLogOpt()
 	flag.Var(logging, "log-level", "level at which logging occurs. One of crit, err, notice, debug")
 	limit := NewLimitOpt()
@@ -54,9 +56,47 @@ func main() {
 
 	http.Handle("/", handler)
 
-	log.Notice(fmt.Sprintf("server listening on port %d", *port))
-	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), nil); err != nil {
-		log.Crit(fmt.Sprintf("server failed: %s", err))
+	if *https {
+
+		if len(*pemPath) == 0 {
+			log.Notice(fmt.Sprintf("Https Server Cannot be run with out  -pemPath specified %s", *pemPath))
+			os.Exit(1)
+		}
+
+		keyFilesExist := true
+		_, err := os.Stat(*pemPath + "/key.pem")
+		if err != nil {
+			keyFilesExist = false
+		} else if os.IsNotExist(err) {
+			keyFilesExist = false
+		}
+
+		_, err = os.Stat(*pemPath + "/cert.pem")
+		if err != nil {
+			keyFilesExist = false
+		} else if os.IsNotExist(err) {
+			keyFilesExist = false
+		}
+
+		if !keyFilesExist {
+			log.Notice(fmt.Sprintf("Https Server Cannot be run key.pem and cert.pem do not exist in dir %s" + *pemPath))
+			os.Exit(1)
+		}
+
+		log.Notice(fmt.Sprintf("Https Server listening on port %d", *port))
+		
+		err_http := http.ListenAndServeTLS(fmt.Sprintf(":%d", *port), *pemPath+"/cert.pem", *pemPath+"/key.pem", nil)
+		if err_http != nil {
+			fmt.Println(err_http)
+		}
+		os.Exit(1)
+	} else {
+		log.Notice(fmt.Sprintf("Http Server listening on port %d", *port))
+
+		err_http := http.ListenAndServe(fmt.Sprintf(":%d", *port), nil)
+		if err_http != nil {
+			fmt.Println(err_http)
+		}
 		os.Exit(1)
 	}
 }
